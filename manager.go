@@ -50,10 +50,23 @@ func NewMiniTagManager(kind string, projectId string) *MiniTagManager {
 	return ret
 }
 
+func (obj *MiniTagManager) DeleteTagsFromTargetId(ctx context.Context, targetId string, cursor string) (string, error) {
+	q := datastore.NewQuery(obj.kind)
+	q = q.Filter("ProjectId =", obj.projectId)
+	q = q.Filter("TargetId =", targetId)
+	q = q.Order("-Created")
+	r, _, eCursor := obj.FindTagKeyFromQuery(ctx, q, cursor)
+	for _, v := range r {
+		datastore.Delete(ctx, v)
+	}
+	return eCursor, nil
+}
+
+//FindTagKeyFromQuery
 //
 // TODO
 //
-func (obj *MiniTagManager) AddTags(ctx context.Context, tagList []string, targetId string) error {
+func (obj *MiniTagManager) AddTags(ctx context.Context, tagList []string, info string, targetId string) error {
 	for _, x := range tagList {
 		isSave := false
 		for _, y := range tagList {
@@ -73,6 +86,18 @@ func (obj *MiniTagManager) AddTags(ctx context.Context, tagList []string, target
 		}
 	}
 	return nil
+}
+
+func (obj *MiniTagManager) AddTag(ctx context.Context, tag1 string, tag2 string, info string, targetId string) error {
+	mainTag := tag1
+	subTag := tag2
+	if subTag != "" && strings.Compare(tag1, tag2) <= 0 {
+		mainTag = tag2
+		subTag = tag1
+	}
+	tag := obj.NewTag(ctx, mainTag, subTag, targetId, "main")
+	tag.gaeObject.Info = info
+	return tag.SaveOnDB(ctx)
 }
 
 func (obj *MiniTagManager) NewTag(ctx context.Context, mainTag string, //
@@ -142,7 +167,7 @@ func (obj *MiniTagManager) NewTagFromKey(ctx context.Context, gaeKey *datastore.
 
 https://cloud.google.com/appengine/docs/go/config/indexconfig#updating_indexes
 */
-func (obj *MiniTagManager) FindTagFromTagPlus(ctx context.Context, mainTag string, subTag string, cursorSrc string) ([]*MiniTag, string, string) {
+func (obj *MiniTagManager) FindTags(ctx context.Context, mainTag string, subTag string, cursorSrc string) ([]*MiniTag, string, string) {
 	q := datastore.NewQuery(obj.kind)
 	q = q.Filter("ProjectId =", obj.projectId)
 	q = q.Filter("MainTag =", mainTag)
@@ -172,6 +197,35 @@ func (obj *MiniTagManager) FindTagFromTargetId(ctx context.Context, targetTag st
 	q = q.Filter("TargetId =", targetTag)
 	q = q.Order("-Created").Limit(10)
 	return obj.FindTagFromQuery(ctx, q, cursorSrc)
+}
+
+func (obj *MiniTagManager) FindTagKeyFromQuery(ctx context.Context, q *datastore.Query, cursorSrc string) ([]*datastore.Key, string, string) {
+	cursor := obj.newCursorFromSrc(cursorSrc)
+	if cursor != nil {
+		q = q.Start(*cursor)
+	}
+	q = q.KeysOnly()
+	founds := q.Run(ctx)
+
+	var retUser []*datastore.Key
+
+	var cursorNext string = ""
+	var cursorOne string = ""
+
+	for i := 0; ; i++ {
+		var d GaeObjectTag
+		key, err := founds.Next(&d)
+		if err != nil || err == datastore.Done {
+			break
+		} else {
+			retUser = append(retUser, key)
+		}
+		if i == 0 {
+			cursorOne = obj.makeCursorSrc(founds)
+		}
+	}
+	cursorNext = obj.makeCursorSrc(founds)
+	return retUser, cursorOne, cursorNext
 }
 
 func (obj *MiniTagManager) FindTagFromQuery(ctx context.Context, q *datastore.Query, cursorSrc string) ([]*MiniTag, string, string) {
