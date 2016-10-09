@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"
+	"google.golang.org/appengine/log"
 	"google.golang.org/appengine/memcache"
 )
 
@@ -71,8 +72,12 @@ func (obj *MiniTagManager) DeleteTagsFromTargetId(ctx context.Context, targetId 
 func (obj *MiniTagManager) AddPairTags(ctx context.Context, tagList []string, info string, targetId string) error {
 	vs := obj.MakeTags(ctx, tagList)
 	for _, v := range vs {
+		log.Infof(ctx, ">>"+v.MainTag+" : "+v.SubTag)
 		tag := obj.NewTag(ctx, v.MainTag, v.SubTag, targetId, v.Type)
-		tag.SaveOnDB(ctx)
+		err := tag.SaveOnDB(ctx)
+		if err != nil {
+			log.Infof(ctx, ">>"+err.Error())
+		}
 	}
 	return nil
 }
